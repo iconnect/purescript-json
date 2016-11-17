@@ -9,8 +9,8 @@ module Data.JSON
     ) where
 
 import Prelude
-import qualified Data.Map as M
-import qualified Data.Set as S
+import Data.Map as M
+import Data.Set as S
 import Data.Either
 import Data.Int
 import Data.Maybe
