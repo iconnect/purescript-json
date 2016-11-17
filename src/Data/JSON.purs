@@ -125,18 +125,24 @@ instance mapFromJSON :: (FromJSON a) => FromJSON (M.Map String a) where
             Left  l -> fail l
     parseJSON i = fail $ show i ++ " is not (Map String a)."
 
-(.:) :: forall a. (FromJSON a) => JObject -> String -> JParser a
-(.:) obj key = case M.lookup key obj of
+infixl 4 assoc as (.:)
+
+assoc :: forall a. (FromJSON a) => JObject -> String -> JParser a
+assoc obj key = case M.lookup key obj of
     Nothing -> Left $ "key " ++ show key ++ " not present"
     Just v  -> parseJSON v
 
-(.:?) :: forall a. (FromJSON a) => JObject -> String -> JParser (Maybe a)
-(.:?) obj key = case M.lookup key obj of
+infixl 4 assocOpt as (.:?)
+
+assocOpt :: forall a. (FromJSON a) => JObject -> String -> JParser (Maybe a)
+assocOpt obj key = case M.lookup key obj of
     Nothing -> return Nothing
     Just v  -> parseJSON v
 
-(.!=) :: forall a. JParser (Maybe a) -> a -> JParser a
-(.!=) pmval val = fromMaybe val <$> pmval
+infixl 4 assocBang as (.!=)
+
+assocBang :: forall a. JParser (Maybe a) -> a -> JParser a
+assocBang pmval val = fromMaybe val <$> pmval
 
 foreign import data JSON :: *
 
@@ -178,8 +184,10 @@ class ToJSON a where
 
 type Pair = Tuple String JValue
 
-(.=) :: forall a. (ToJSON a) => String -> a -> Pair
-(.=) name value = Tuple name (toJSON value)
+infixl 4 mkPair as (.=)
+
+mkPair :: forall a. (ToJSON a) => String -> a -> Pair
+mkPair name value = Tuple name (toJSON value)
 
 object :: Array Pair -> JValue
 object ps = JObject $ M.fromList $ toList $ ps
