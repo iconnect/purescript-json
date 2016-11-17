@@ -1,23 +1,25 @@
 module Data.JSON
     ( JValue(..), JObject(..), JArray(..), JParser(..)
-    , FromJSON, parseJSON, fail
+    , class FromJSON, parseJSON, fail
     , decode, eitherDecode
     , (.:), (.:?), (.!=)
+    , assoc, assocOpt, assocBang, mkPair
 
-    , ToJSON, toJSON, encode
+    , class ToJSON, toJSON, encode
     , Pair(..), (.=), object
     ) where
 
-import Prelude
+import Prelude (class Ord, class Eq, class Show, Unit, id, map, pure, show, unit, bind, ($), (<$>), (<>), (<*>), (==))
 import Data.Map as M
 import Data.Set as S
-import Data.Either
-import Data.Int
-import Data.Maybe
-import Data.Function
-import Data.Tuple
-import Data.Traversable
-import Data.List(fromList,toList,List(..))
+import Data.Either(Either(..), either)
+import Data.Int (fromNumber, toNumber)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Function.Uncurried (Fn4, Fn2, Fn3, runFn4, runFn2, runFn3)
+import Data.Tuple (Tuple(..), fst, snd)
+import Data.Traversable (sequence)
+import Data.Array as A
+import Data.List(fromFoldable, toUnfoldable, List)
 
 type JObject = M.Map String JValue
 type JArray  = Array JValue
@@ -33,12 +35,12 @@ data JValue
     | JNull
 
 instance showValue :: Show JValue where
-    show (JObject m) = "JObject " ++ show m
-    show (JArray vs) = "JArray "  ++ show vs
-    show (JString s) = "JString " ++ show s
-    show (JNumber n) = "JNumber " ++ show n
-    show (JInt    i) = "JInt "    ++ show i
-    show (JBool   b) = "JBool "   ++ show b
+    show (JObject m) = "JObject " <> show m
+    show (JArray vs) = "JArray "  <> show vs
+    show (JString s) = "JString " <> show s
+    show (JNumber n) = "JNumber " <> show n
+    show (JInt    i) = "JInt "    <> show i
+    show (JBool   b) = "JBool "   <> show b
     show JNull       = "JNull"
 
 instance eqValue :: Eq JValue where
@@ -74,69 +76,69 @@ instance valueFromJSON :: FromJSON JValue where
 
 instance boolFromJSON :: FromJSON Boolean where
     parseJSON (JBool b) = Right b
-    parseJSON i         = fail $ show i ++ " is not Boolean."
+    parseJSON i         = fail $ show i <> " is not Boolean."
 
 instance numberFromJSON :: FromJSON Number where
-    parseJSON (JNumber n) = return n
-    parseJSON (JInt    i) = return $ toNumber i
-    parseJSON i           = fail $ show i ++ " is not Number."
+    parseJSON (JNumber n) = pure n
+    parseJSON (JInt    i) = pure $ toNumber i
+    parseJSON i           = fail $ show i <> " is not Number."
 
 instance intFromJSON :: FromJSON Int where
-    parseJSON (JInt    n) = return n
-    parseJSON (JNumber i) = maybe (fail $ show i ++ " is not Int.") return $ fromNumber i
-    parseJSON i           = fail $ show i ++ " is not Int."
+    parseJSON (JInt    n) = pure n
+    parseJSON (JNumber i) = maybe (fail $ show i <> " is not Int.") pure $ fromNumber i
+    parseJSON i           = fail $ show i <> " is not Int."
 
 instance unitFromJSON :: FromJSON Unit where
-    parseJSON JNull = return unit
-    parseJSON i     = fail $ show i ++ " is not Null."
+    parseJSON JNull = pure unit
+    parseJSON i     = fail $ show i <> " is not Null."
 
 instance stringFromJSON :: FromJSON String where
-    parseJSON (JString s) = return s
-    parseJSON i          = fail $ show i ++ " is not String."
+    parseJSON (JString s) = pure s
+    parseJSON i          = fail $ show i <> " is not String."
 
 instance arrayFromJSON :: (FromJSON a) => FromJSON (Array a) where
     parseJSON (JArray a) = sequence $ parseJSON <$> a
-    parseJSON i          = fail $ show i ++ " is not [a]."
+    parseJSON i          = fail $ show i <> " is not [a]."
 
 instance tupleFromJSON :: (FromJSON a, FromJSON b) => FromJSON (Tuple a b) where
     parseJSON (JArray [a,b]) = Tuple <$> parseJSON a <*> parseJSON b
-    parseJSON i              = fail $ show i ++ " is not (a,b)."
+    parseJSON i              = fail $ show i <> " is not (a,b)."
 
 instance eitherFromJSON :: (FromJSON a, FromJSON b) => FromJSON (Either a b) where
-    parseJSON (JObject obj) = case fromList $ M.toList obj of
+    parseJSON (JObject obj) = case toUnfoldable $ M.toList obj of
         [Tuple "Right" r] -> Right <$> parseJSON r
         [Tuple "Left"  l] -> Left  <$> parseJSON l
-        _                 -> fail $ show obj ++ " is not (Either a b)."
-    parseJSON i = fail $ show i ++ " is not (Either a b)."
+        _                 -> fail $ show obj <> " is not (Either a b)."
+    parseJSON i = fail $ show i <> " is not (Either a b)."
 
 instance maybeFromJSON :: (FromJSON a) => FromJSON (Maybe a) where
-    parseJSON a = return $ case parseJSON a of
+    parseJSON a = pure $ case parseJSON a of
         Left  _ -> Nothing
         Right r -> Just r
 
 instance setFromJSON :: (Ord a, FromJSON a) => FromJSON (S.Set a) where
-    parseJSON x = S.fromList <$> toList <$> (parseJSON x :: JParser (Array a))
+    parseJSON x = S.fromFoldable <$> fromFoldable <$> (parseJSON x :: JParser (Array a))
 
 instance mapFromJSON :: (FromJSON a) => FromJSON (M.Map String a) where
     parseJSON (JObject o) = M.fromList <$> (sequence $ fn <$> M.toList o)
       where
         fn (Tuple k v) = case parseJSON v of
-            Right r -> return (Tuple k r)
+            Right r -> pure (Tuple k r)
             Left  l -> fail l
-    parseJSON i = fail $ show i ++ " is not (Map String a)."
+    parseJSON i = fail $ show i <> " is not (Map String a)."
 
 infixl 4 assoc as .:
 
 assoc :: forall a. (FromJSON a) => JObject -> String -> JParser a
 assoc obj key = case M.lookup key obj of
-    Nothing -> Left $ "key " ++ show key ++ " not present"
+    Nothing -> Left $ "key " <> show key <> " not present"
     Just v  -> parseJSON v
 
 infixl 4 assocOpt as .:?
 
 assocOpt :: forall a. (FromJSON a) => JObject -> String -> JParser (Maybe a)
 assocOpt obj key = case M.lookup key obj of
-    Nothing -> return Nothing
+    Nothing -> pure Nothing
     Just v  -> parseJSON v
 
 infixl 4 assocBang as .!=
@@ -190,7 +192,7 @@ mkPair :: forall a. (ToJSON a) => String -> a -> Pair
 mkPair name value = Tuple name (toJSON value)
 
 object :: Array Pair -> JValue
-object ps = JObject $ M.fromList $ toList $ ps
+object ps = JObject $ M.fromList $ ((A.toUnfoldable $ ps) :: List Pair)
 
 encode :: forall a. (ToJSON a) => a -> String
 encode a = valueToString $ toJSON a
@@ -225,7 +227,7 @@ instance maybeToJSON :: (ToJSON a) => ToJSON (Maybe a) where
     toJSON (Just a) = toJSON a
 
 instance setToJSON :: (ToJSON a) => ToJSON (S.Set a) where
-    toJSON s = JArray $ fromList $ toJSON <$> S.toList s
+    toJSON s = JArray $ ((toJSON <$> S.toUnfoldable s) :: Array JValue)
 
 instance tupleToJSON :: (ToJSON a, ToJSON b) => ToJSON (Tuple a b) where
     toJSON (Tuple a b) = JArray [toJSON a, toJSON b]
@@ -243,7 +245,7 @@ foreign import objToHash :: Fn4 (JValue -> JSON)
                JSON
 
 valueToJSONImpl :: JValue -> JSON
-valueToJSONImpl (JObject o) = runFn4 objToHash valueToJSONImpl fst snd $ fromList $ M.toList o
+valueToJSONImpl (JObject o) = runFn4 objToHash valueToJSONImpl fst snd $ toUnfoldable $ M.toList o
 valueToJSONImpl (JArray  a) = unsafeCoerce $ valueToJSONImpl <$> a
 valueToJSONImpl (JString s) = unsafeCoerce s
 valueToJSONImpl (JNumber n) = unsafeCoerce n

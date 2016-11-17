@@ -28,10 +28,5 @@
     "purescript-foldable-traversable": "~1.0.0",
     "purescript-exceptions": "~1.0.0",
     "purescript-integers": "~1.0.0"
-  },
-  "devDependencies": {
-    "purescript-simple-assert": "~0.3.0",
-    "purescript-pspec": "~0.7.0",
-    "purescript-console": "~0.1.0"
   }
 }
