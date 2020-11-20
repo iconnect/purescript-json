@@ -58,10 +58,6 @@ exports.jsonToValueImpl = function jsonToValueImpl(auxes, ctors) {
 
 exports.jsNull = null;
 
-exports.unsafeCoerce = function unsafeCoerce(a) {
-  return a;
-};
-
 exports.objToHash = function objToHash(valueToJSONImpl, fst, snd, obj) {
     var hash = {};
     for(var i = 0; i < obj.length; i++) {

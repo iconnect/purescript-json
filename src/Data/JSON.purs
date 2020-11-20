@@ -34,7 +34,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Function.Uncurried (Fn2, Fn3, Fn4, runFn2, runFn3, runFn4)
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Traversable (sequence)
-import Data.Array (fromFoldable, toUnfoldable)
+import Unsafe.Coerce (unsafeCoerce)
 
 type JObject = M.Map String JValue
 type JArray  = Array JValue
@@ -120,7 +120,7 @@ instance tupleFromJSON :: (FromJSON a, FromJSON b) => FromJSON (Tuple a b) where
     parseJSON i              = fail $ show i <> " is not (a,b)."
 
 instance eitherFromJSON :: (FromJSON a, FromJSON b) => FromJSON (Either a b) where
-    parseJSON (JObject obj) = case fromFoldable $ M.toUnfoldable obj of
+    parseJSON (JObject obj) = case M.toUnfoldable obj of
         [Tuple "Right" r] -> Right <$> parseJSON r
         [Tuple "Left"  l] -> Left  <$> parseJSON l
         _                 -> fail $ show obj <> " is not (Either a b)."
@@ -132,10 +132,10 @@ instance maybeFromJSON :: (FromJSON a) => FromJSON (Maybe a) where
         Right r -> Just r
 
 instance setFromJSON :: (Ord a, FromJSON a) => FromJSON (S.Set a) where
-    parseJSON x = S.fromFoldable <$> toUnfoldable <$> (parseJSON x :: JParser (Array a))
+    parseJSON x = S.fromFoldable <$> (parseJSON x :: JParser (Array a))
 
 instance mapFromJSON :: (FromJSON a) => FromJSON (M.Map String a) where
-    parseJSON (JObject o) = M.fromFoldable <$> (sequence $ fn <$> M.toUnfoldable o)
+    parseJSON (JObject o) = M.fromFoldable <$> (sequence $ fn <$> (M.toUnfoldable o :: Array (Tuple String JValue)))
       where
         fn (Tuple k v) = case parseJSON v of
             Right r -> pure (Tuple k r)
@@ -179,7 +179,7 @@ type Ctors = { null   :: JValue
 
 type Auxes = { left   :: String -> Either String JValue
              , right  :: JValue -> Either String JValue
-             , either :: forall c. (String -> c) -> (JValue -> c) -> Either String JValue -> c
+             , either :: (String -> JSON) -> (JValue -> JSON) -> Either String JValue -> JSON
              , insert :: String -> JValue -> JObject -> JObject
              , empty  :: JObject
              }
@@ -207,7 +207,7 @@ mkTuple name value = Tuple name (toJSON value)
 infixr 5 mkTuple as .=
 
 object :: Array Pair -> JValue
-object ps = JObject $ M.fromFoldable $ toUnfoldable $ ps
+object ps = JObject $ M.fromFoldable $ ps
 
 encode :: forall a. (ToJSON a) => a -> String
 encode a = valueToString $ toJSON a
@@ -242,7 +242,7 @@ instance maybeToJSON :: (ToJSON a) => ToJSON (Maybe a) where
     toJSON (Just a) = toJSON a
 
 instance setToJSON :: (ToJSON a) => ToJSON (S.Set a) where
-    toJSON s = JArray $ fromFoldable $ toJSON <$> S.toUnfoldable s
+    toJSON s = JArray $ toJSON <$> S.toUnfoldable s
 
 instance tupleToJSON :: (ToJSON a, ToJSON b) => ToJSON (Tuple a b) where
     toJSON (Tuple a b) = JArray [toJSON a, toJSON b]
@@ -251,7 +251,6 @@ instance valueToJSON :: ToJSON JValue where
     toJSON = identity
 
 foreign import jsNull :: JSON
-foreign import unsafeCoerce :: forall a b. a -> b
 
 foreign import objToHash :: Fn4 (JValue -> JSON)
                (Tuple String JValue -> String)
@@ -260,7 +259,7 @@ foreign import objToHash :: Fn4 (JValue -> JSON)
                JSON
 
 valueToJSONImpl :: JValue -> JSON
-valueToJSONImpl (JObject o) = runFn4 objToHash valueToJSONImpl fst snd $ fromFoldable $ M.toUnfoldable o
+valueToJSONImpl (JObject o) = runFn4 objToHash valueToJSONImpl fst snd $ M.toUnfoldable o
 valueToJSONImpl (JArray  a) = unsafeCoerce $ valueToJSONImpl <$> a
 valueToJSONImpl (JString s) = unsafeCoerce s
 valueToJSONImpl (JNumber n) = unsafeCoerce n
